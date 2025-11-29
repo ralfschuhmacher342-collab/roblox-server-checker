@@ -1,175 +1,104 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
-    <title>Roblox Private Server Checker</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #f2f2f2;
-            padding: 40px;
-        }
-        #app {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            max-width: 600px;
-            margin: auto;
-            box-shadow: 0 0 15px rgba(0,0,0,0.15);
-        }
-        input, button {
-            padding: 10px;
-            font-size: 16px;
-            width: 100%;
-            margin-top: 10px;
-        }
-        #result {
-            margin-top: 25px;
-            padding: 20px;
-            background: #e9e9e9;
-            border-radius: 10px;
-            display: none;
-        }
-        .user-box {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            margin-top: 10px;
-        }
-        .user-box img {
-            width: 70px;
-            height: 70px;
-            border-radius: 50%;
-        }
-        .label {
-            font-weight: bold;
-        }
-    </style>
+<meta charset="UTF-8">
+<title>Roblox Server Dashboard (Legal)</title>
+<script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
+<body class="bg-gray-900 text-gray-100">
 
-<div id="app">
-    <h2>Roblox Private Server Checker</h2>
+<div class="container mx-auto p-6">
+    <h1 class="text-3xl font-bold mb-6 text-center">Roblox Server Dashboard (Legal)</h1>
 
-    <input id="linkInput" type="text" placeholder="Roblox Link eingeben …">
-    <button onclick="checkServer()">Prüfen</button>
+    <div class="max-w-xl mx-auto mb-6">
+        <input id="linkInput" type="text" placeholder="Private Server Link eingeben..."
+               class="w-full p-3 rounded-lg text-gray-900" />
+        <button onclick="checkLink()"
+                class="mt-2 w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg font-bold">Prüfen</button>
+    </div>
 
-    <div id="result"></div>
+    <div id="gameInfo" class="mb-6"></div>
+    <div id="serverContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
 </div>
 
 <script>
+async function checkLink() {
+    const link = document.getElementById('linkInput').value.trim();
+    const gameInfo = document.getElementById('gameInfo');
+    const serverContainer = document.getElementById('serverContainer');
+    gameInfo.innerHTML = '';
+    serverContainer.innerHTML = '';
 
-// ----------------------------------------------------------
-// TEIL 1: Roblox Share-Links korrekt auflösen (neues API 2024–2025)
-// ----------------------------------------------------------
-async function resolveShareLink(link) {
+    if (!link) return alert("Bitte einen Link eingeben.");
+
     let url;
+    try { url = new URL(link); } catch { return alert("Kein gültiger Link."); }
 
-    try { url = new URL(link); } catch { return { code: null, ok: false }; }
+    // Private Server Code extrahieren
+    const code = url.searchParams.get("privateServerLinkCode")
+        || url.searchParams.get("privateServerInviteId")
+        || url.searchParams.get("code");
 
-    if (url.hostname === "www.roblox.com" && url.pathname === "/share") {
-        let shareCode = url.searchParams.get("code");
-        if (!shareCode) return { code: null, ok: false };
+    if (!code) { gameInfo.innerHTML = "<p>Kein Private Server Code gefunden.</p>"; return; }
 
-        try {
-            let res = await fetch(`https://apis.roblox.com/share/v1/share-links/${shareCode}`);
-            let data = await res.json();
+    // Private Server Info (legal: Owner + GameID)
+    let info = await fetch(`https://games.roblox.com/v1/private-servers/lookup?privateServerLinkCode=${code}`)
+        .then(r => r.json()).catch(()=>null);
 
-            // NEUE Roblox-Share-Struktur
-            if (data.sharedExperienceInvite?.inviteCode) {
-                return { code: data.sharedExperienceInvite.inviteCode, ok: true };
-            }
+    if (!info || !info.gameId) { gameInfo.innerHTML = "<p>Ungültiger Private Server.</p>"; return; }
 
-            // ÄLTERES Format
-            if (data.sharedPrivateServerData?.privateServerLinkCode) {
-                return { code: data.sharedPrivateServerData.privateServerLinkCode, ok: true };
-            }
+    // Game Info
+    let gameData = await fetch(`https://games.roblox.com/v1/games?universeIds=${info.universeId}`)
+        .then(r => r.json());
+    const game = gameData.data[0];
 
-            return { code: null, ok: false };
-
-        } catch {
-            return { code: null, ok: false };
-        }
-    }
-
-    return { code: null, ok: false };
-}
-
-// ----------------------------------------------------------
-// TEIL 2: Roblox Username + Avatar holen
-// ----------------------------------------------------------
-async function getUserData(privateCode) {
-    try {
-        let res = await fetch(`https://thumbnails.roblox.com/v1/assets?assetIds=${privateCode}&size=150x150&format=Png&isCircular=true`);
-        let avatarData = await res.json();
-
-        let thumb = avatarData.data[0]?.imageUrl || null;
-
-        return {
-            username: "Unbekannt / Privat",
-            avatar: thumb
-        };
-
-    } catch {
-        return { username: "Unbekannt", avatar: null };
-    }
-}
-
-// ----------------------------------------------------------
-// TEIL 3: Hauptfunktion
-// ----------------------------------------------------------
-async function checkServer() {
-
-    const input = document.getElementById("linkInput").value.trim();
-    const resultBox = document.getElementById("result");
-
-    if (!input) {
-        alert("Bitte einen Roblox Server-Link eingeben.");
-        return;
-    }
-
-    // 1. Share-Link auflösen
-    let share = await resolveShareLink(input);
-
-    let code = null;
-
-    if (share.ok) {
-        code = share.code;
-    } else {
-        let url = new URL(input);
-
-        // DIREKTE Parameter
-        code =
-            url.searchParams.get("privateServerLinkCode") ||
-            url.searchParams.get("privateServerInviteId") ||
-            url.searchParams.get("psCode");
-    }
-
-    if (!code) {
-        alert("Kein Private Server Code gefunden.");
-        return;
-    }
-
-    // Roblox User-Daten holen
-    let userData = await getUserData(code);
-
-    // Seite anzeigen
-    resultBox.style.display = "block";
-    resultBox.innerHTML = `
-        <div class="label">Private Server Code:</div>
-        <div>${code}</div>
-        
-        <hr>
-
-        <div class="label">Besitzer:</div>
-        <div class="user-box">
-            <img src="${userData.avatar || ""}" alt="Avatar">
-            <div>${userData.username}</div>
+    gameInfo.innerHTML = `
+        <div class="bg-gray-800 p-4 rounded-lg shadow-lg text-center">
+            <h2 class="text-2xl font-bold mb-2">${game.name}</h2>
+            <p class="mb-2">${game.description || "Keine Beschreibung"}</p>
+            <p><b>Private Server Owner:</b> ${info.ownerName}</p>
+            <img class="mx-auto mt-3 rounded-lg" src="https://tr.rbxcdn.com/${game.rootPlaceId}/768/432/Thumbnail/Png" alt="Game Thumbnail">
         </div>
     `;
+
+    // Public Server List (legal)
+    let publicServers = await fetch(`https://games.roblox.com/v1/games/${info.gameId}/servers/Public?limit=12`)
+        .then(r => r.json());
+
+    if(!publicServers.data.length){
+        serverContainer.innerHTML = "<p class='text-center mt-4'>Keine öffentlichen Server verfügbar.</p>";
+        return;
+    }
+
+    publicServers.data.forEach(server => {
+        let html = `
+        <div class="bg-gray-800 rounded-lg p-4 shadow-lg">
+            <h3 class="font-bold mb-1">Server ID: ${server.id}</h3>
+            <p class="mb-2">Spieler: ${server.playing}/${server.maxPlayers}</p>
+            <div class="flex flex-wrap gap-2">`;
+
+        if(server.players){
+            server.players.forEach(p => {
+                html += `
+                    <div class="flex flex-col items-center text-sm bg-gray-700 p-1 rounded">
+                        <img class="w-16 h-16 rounded-full" src="https://www.roblox.com/headshot-thumbnail/image?userId=${p.id}&width=150&height=150&format=png">
+                        <span>${p.name}</span>
+                    </div>
+                `;
+            });
+        }
+
+        html += `</div></div>`;
+        serverContainer.innerHTML += html;
+    });
 }
 
-</script>
+// Optional: Auto Refresh aller öffentlichen Server alle 15 Sekunden
+setInterval(()=>{
+    const link = document.getElementById('linkInput').value.trim();
+    if(link) checkLink();
+}, 15000);
 
+</script>
 </body>
 </html>
