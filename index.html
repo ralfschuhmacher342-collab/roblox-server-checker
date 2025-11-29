@@ -68,9 +68,6 @@
         border-radius: 10px;
         padding: 20px;
         margin-top: 15px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
         border: 1px solid #222;
         animation: fadeIn 0.4s ease;
     }
@@ -89,7 +86,6 @@
 
     .ok { background: #2ecc71; color: black; }
     .fail { background: #e74c3c; color: white; }
-
 </style>
 </head>
 
@@ -111,16 +107,12 @@
 <script>
 
 // ---------------------------------------------------
-// 🔄  SHARE-LINK (https://roblox.com/share?code=xxx) AUFLÖSER
+// 🔄 SHARE-LINK AUFLÖSEN (z. B. roblox.com/share?code=xxx)
 // ---------------------------------------------------
 async function resolveShareLink(link) {
     let url;
 
-    try {
-        url = new URL(link);
-    } catch {
-        return link;
-    }
+    try { url = new URL(link); } catch { return link; }
 
     if (url.hostname === "www.roblox.com" && url.pathname === "/share") {
         let shareCode = url.searchParams.get("code");
@@ -139,25 +131,20 @@ async function resolveShareLink(link) {
 }
 
 // ---------------------------------------------------
-// 🔍  HAUPTFUNKTION — PRIVATE SERVER CHECKEN
+// 🔍 PRIVATE SERVER CHECKER
 // ---------------------------------------------------
 async function checkServer() {
     let inputLink = document.getElementById("linkInput").value;
-
     if (!inputLink.trim()) return alert("Bitte einen Link eingeben!");
 
     // Share-Link zuerst auflösen
-    let link = await resolveShareLink(inputLink);
+    let resolved = await resolveShareLink(inputLink);
 
     let url;
-    try {
-        url = new URL(link);
-    } catch {
-        alert("Ungültiger Link!");
-        return;
-    }
+    try { url = new URL(resolved); }
+    catch { alert("Ungültiger Link!"); return; }
 
-    // Unterstützte Roblox-Parameter
+    // Private Server Code extrahieren
     let code =
         url.searchParams.get("privateServerLinkCode") ||
         url.searchParams.get("privateServerInviteId") ||
@@ -168,15 +155,7 @@ async function checkServer() {
         return;
     }
 
-    let endpoint = "";
-
-    if (url.searchParams.get("privateServerLinkCode")) {
-        endpoint = `https://games.roblox.com/v1/games/servers/private?privateServerLinkCode=${code}`;
-    } else if (url.searchParams.get("privateServerInviteId")) {
-        endpoint = `https://games.roblox.com/v1/games/servers/private?privateServerInviteId=${code}`;
-    } else {
-        endpoint = `https://games.roblox.com/v1/games/servers/private?privateServerLinkCode=${code}`;
-    }
+    let endpoint = `https://games.roblox.com/v1/games/servers/private?privateServerLinkCode=${code}`;
 
     let serverList = document.getElementById("serverList");
     let box = document.createElement("div");
@@ -190,33 +169,59 @@ async function checkServer() {
 
         if (!data.data || data.data.length === 0) {
             box.innerHTML = `
-                <span>❌ Server ungültig / nicht vorhanden</span>
+                <span>❌ Server ungültig</span>
                 <span class="statusBadge fail">INVALID</span>
             `;
             return;
         }
 
         let server = data.data[0];
-        let players = server.playerCount ?? 0;
 
-        if (players > 0) {
-            box.innerHTML = `
-                <span>🟢 Aktiver Server — Spieler: ${players}</span>
-                <span class="statusBadge ok">OK</span>
-            `;
-        } else {
-            box.innerHTML = `
-                <span>🔴 Server leer / offline</span>
-                <span class="statusBadge fail">OFFLINE</span>
-            `;
+        // Spieler IDs
+        let playerIds = server.playerIds || [];
+        let playersData = [];
+
+        for (let id of playerIds) {
+
+            // Username holen
+            let userInfoReq = await fetch(`https://users.roblox.com/v1/users/${id}`);
+            let userInfo = await userInfoReq.json();
+
+            // Avatar-Icon holen
+            let iconReq = await fetch(
+                `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${id}&size=150x150&format=Png`
+            );
+            let iconJson = await iconReq.json();
+            let iconUrl = iconJson.data?.[0]?.imageUrl;
+
+            playersData.push({
+                id: id,
+                name: userInfo.name,
+                icon: iconUrl
+            });
         }
 
-    } catch (err) {
+        let playersHTML = playersData.map(p => `
+            <div style="display:flex;align-items:center;margin-top:8px;gap:10px;">
+                <img src="${p.icon}" style="width:40px;height:40px;border-radius:50%;">
+                <span>${p.name}</span>
+            </div>
+        `).join("");
+
         box.innerHTML = `
-            <span>❌ API Fehler / Roblox offline</span>
+            <div>
+                🟢 Aktiver Server — Spieler: ${playersData.length}
+                ${playersHTML}
+            </div>
+            <span class="statusBadge ok">OK</span>
+        `;
+
+    } catch (err) {
+        console.error(err);
+        box.innerHTML = `
+            <span>❌ API Fehler</span>
             <span class="statusBadge fail">ERROR</span>
         `;
-        console.error(err);
     }
 }
 
