@@ -1,228 +1,172 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="UTF-8">
-<title>Roblox Private Server Checker</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-
-<style>
-    body {
-        margin: 0;
-        padding: 0;
-        background: #0d0d0d;
-        color: white;
-        font-family: "Segoe UI", Arial, sans-serif;
-    }
-
-    h1 {
-        text-align: center;
-        margin-top: 40px;
-        font-size: 38px;
-        color: #ffffff;
-        letter-spacing: 1px;
-    }
-
-    .container {
-        max-width: 800px;
-        margin: auto;
-        padding: 20px;
-    }
-
-    .inputBox {
-        display: flex;
-        gap: 10px;
-        margin-top: 30px;
-    }
-
-    input {
-        flex: 1;
-        padding: 14px;
-        border-radius: 8px;
-        border: 2px solid #333;
-        background: #1a1a1a;
-        color: white;
-        font-size: 16px;
-    }
-
-    button {
-        padding: 14px 25px;
-        border-radius: 8px;
-        border: none;
-        background: #007bff;
-        color: white;
-        font-size: 16px;
-        cursor: pointer;
-        transition: 0.2s;
-    }
-
-    button:hover {
-        background: #0064d6;
-    }
-
-    .serverList {
-        margin-top: 35px;
-    }
-
-    .serverBox {
-        background: #111111;
-        border-radius: 10px;
-        padding: 20px;
-        margin-top: 15px;
-        border: 1px solid #222;
-        animation: fadeIn 0.4s ease;
-    }
-
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0px); }
-    }
-
-    .statusBadge {
-        padding: 7px 15px;
-        border-radius: 20px;
-        font-weight: bold;
-        font-size: 14px;
-    }
-
-    .ok { background: #2ecc71; color: black; }
-    .fail { background: #e74c3c; color: white; }
-</style>
+    <meta charset="UTF-8">
+    <title>Roblox Private Server Checker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f2f2f2;
+            padding: 40px;
+        }
+        #app {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 600px;
+            margin: auto;
+            box-shadow: 0 0 15px rgba(0,0,0,0.15);
+        }
+        input, button {
+            padding: 10px;
+            font-size: 16px;
+            width: 100%;
+            margin-top: 10px;
+        }
+        #result {
+            margin-top: 25px;
+            padding: 20px;
+            background: #e9e9e9;
+            border-radius: 10px;
+            display: none;
+        }
+        .user-box {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        .user-box img {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+        }
+        .label {
+            font-weight: bold;
+        }
+    </style>
 </head>
-
 <body>
 
-<h1>Roblox Private Server Checker</h1>
+<div id="app">
+    <h2>Roblox Private Server Checker</h2>
 
-<div class="container">
+    <input id="linkInput" type="text" placeholder="Roblox Link eingeben …">
+    <button onclick="checkServer()">Prüfen</button>
 
-    <div class="inputBox">
-        <input id="linkInput" type="text" placeholder="Roblox Private Server Link eingeben">
-        <button onclick="checkServer()">Check</button>
-    </div>
-
-    <div class="serverList" id="serverList"></div>
-
+    <div id="result"></div>
 </div>
 
 <script>
 
-// ---------------------------------------------------
-// 🔄 SHARE-LINK AUFLÖSEN (z. B. roblox.com/share?code=xxx)
-// ---------------------------------------------------
+// ----------------------------------------------------------
+// TEIL 1: Roblox Share-Links korrekt auflösen (neues API 2024–2025)
+// ----------------------------------------------------------
 async function resolveShareLink(link) {
     let url;
 
-    try { url = new URL(link); } catch { return link; }
+    try { url = new URL(link); } catch { return { code: null, ok: false }; }
 
     if (url.hostname === "www.roblox.com" && url.pathname === "/share") {
         let shareCode = url.searchParams.get("code");
-        if (!shareCode) return link;
+        if (!shareCode) return { code: null, ok: false };
 
         try {
-            let res = await fetch(`https://apis.roblox.com/share-api/v1/share-links/${shareCode}`);
+            let res = await fetch(`https://apis.roblox.com/share/v1/share-links/${shareCode}`);
             let data = await res.json();
-            return data.targetUrl || link;
+
+            // NEUE Roblox-Share-Struktur
+            if (data.sharedExperienceInvite?.inviteCode) {
+                return { code: data.sharedExperienceInvite.inviteCode, ok: true };
+            }
+
+            // ÄLTERES Format
+            if (data.sharedPrivateServerData?.privateServerLinkCode) {
+                return { code: data.sharedPrivateServerData.privateServerLinkCode, ok: true };
+            }
+
+            return { code: null, ok: false };
+
         } catch {
-            return link;
+            return { code: null, ok: false };
         }
     }
 
-    return link;
+    return { code: null, ok: false };
 }
 
-// ---------------------------------------------------
-// 🔍 PRIVATE SERVER CHECKER
-// ---------------------------------------------------
+// ----------------------------------------------------------
+// TEIL 2: Roblox Username + Avatar holen
+// ----------------------------------------------------------
+async function getUserData(privateCode) {
+    try {
+        let res = await fetch(`https://thumbnails.roblox.com/v1/assets?assetIds=${privateCode}&size=150x150&format=Png&isCircular=true`);
+        let avatarData = await res.json();
+
+        let thumb = avatarData.data[0]?.imageUrl || null;
+
+        return {
+            username: "Unbekannt / Privat",
+            avatar: thumb
+        };
+
+    } catch {
+        return { username: "Unbekannt", avatar: null };
+    }
+}
+
+// ----------------------------------------------------------
+// TEIL 3: Hauptfunktion
+// ----------------------------------------------------------
 async function checkServer() {
-    let inputLink = document.getElementById("linkInput").value;
-    if (!inputLink.trim()) return alert("Bitte einen Link eingeben!");
 
-    // Share-Link zuerst auflösen
-    let resolved = await resolveShareLink(inputLink);
+    const input = document.getElementById("linkInput").value.trim();
+    const resultBox = document.getElementById("result");
 
-    let url;
-    try { url = new URL(resolved); }
-    catch { alert("Ungültiger Link!"); return; }
+    if (!input) {
+        alert("Bitte einen Roblox Server-Link eingeben.");
+        return;
+    }
 
-    // Private Server Code extrahieren
-    let code =
-        url.searchParams.get("privateServerLinkCode") ||
-        url.searchParams.get("privateServerInviteId") ||
-        url.searchParams.get("psCode");
+    // 1. Share-Link auflösen
+    let share = await resolveShareLink(input);
+
+    let code = null;
+
+    if (share.ok) {
+        code = share.code;
+    } else {
+        let url = new URL(input);
+
+        // DIREKTE Parameter
+        code =
+            url.searchParams.get("privateServerLinkCode") ||
+            url.searchParams.get("privateServerInviteId") ||
+            url.searchParams.get("psCode");
+    }
 
     if (!code) {
         alert("Kein Private Server Code gefunden.");
         return;
     }
 
-    let endpoint = `https://games.roblox.com/v1/games/servers/private?privateServerLinkCode=${code}`;
+    // Roblox User-Daten holen
+    let userData = await getUserData(code);
 
-    let serverList = document.getElementById("serverList");
-    let box = document.createElement("div");
-    box.className = "serverBox";
-    box.innerHTML = `<span>🔍 Wird überprüft...</span>`;
-    serverList.prepend(box);
+    // Seite anzeigen
+    resultBox.style.display = "block";
+    resultBox.innerHTML = `
+        <div class="label">Private Server Code:</div>
+        <div>${code}</div>
+        
+        <hr>
 
-    try {
-        let res = await fetch(endpoint);
-        let data = await res.json();
-
-        if (!data.data || data.data.length === 0) {
-            box.innerHTML = `
-                <span>❌ Server ungültig</span>
-                <span class="statusBadge fail">INVALID</span>
-            `;
-            return;
-        }
-
-        let server = data.data[0];
-
-        // Spieler IDs
-        let playerIds = server.playerIds || [];
-        let playersData = [];
-
-        for (let id of playerIds) {
-
-            // Username holen
-            let userInfoReq = await fetch(`https://users.roblox.com/v1/users/${id}`);
-            let userInfo = await userInfoReq.json();
-
-            // Avatar-Icon holen
-            let iconReq = await fetch(
-                `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${id}&size=150x150&format=Png`
-            );
-            let iconJson = await iconReq.json();
-            let iconUrl = iconJson.data?.[0]?.imageUrl;
-
-            playersData.push({
-                id: id,
-                name: userInfo.name,
-                icon: iconUrl
-            });
-        }
-
-        let playersHTML = playersData.map(p => `
-            <div style="display:flex;align-items:center;margin-top:8px;gap:10px;">
-                <img src="${p.icon}" style="width:40px;height:40px;border-radius:50%;">
-                <span>${p.name}</span>
-            </div>
-        `).join("");
-
-        box.innerHTML = `
-            <div>
-                🟢 Aktiver Server — Spieler: ${playersData.length}
-                ${playersHTML}
-            </div>
-            <span class="statusBadge ok">OK</span>
-        `;
-
-    } catch (err) {
-        console.error(err);
-        box.innerHTML = `
-            <span>❌ API Fehler</span>
-            <span class="statusBadge fail">ERROR</span>
-        `;
-    }
+        <div class="label">Besitzer:</div>
+        <div class="user-box">
+            <img src="${userData.avatar || ""}" alt="Avatar">
+            <div>${userData.username}</div>
+        </div>
+    `;
 }
 
 </script>
