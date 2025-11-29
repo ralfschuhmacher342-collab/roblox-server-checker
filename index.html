@@ -109,20 +109,73 @@
 </div>
 
 <script>
-async function checkServer() {
-    let link = document.getElementById("linkInput").value;
 
-    let code;
+// ---------------------------------------------------
+// 🔄  SHARE-LINK (https://roblox.com/share?code=xxx) AUFLÖSER
+// ---------------------------------------------------
+async function resolveShareLink(link) {
+    let url;
+
     try {
-        code = new URL(link).searchParams.get("privateServerLinkCode");
+        url = new URL(link);
+    } catch {
+        return link;
+    }
+
+    if (url.hostname === "www.roblox.com" && url.pathname === "/share") {
+        let shareCode = url.searchParams.get("code");
+        if (!shareCode) return link;
+
+        try {
+            let res = await fetch(`https://apis.roblox.com/share-api/v1/share-links/${shareCode}`);
+            let data = await res.json();
+            return data.targetUrl || link;
+        } catch {
+            return link;
+        }
+    }
+
+    return link;
+}
+
+// ---------------------------------------------------
+// 🔍  HAUPTFUNKTION — PRIVATE SERVER CHECKEN
+// ---------------------------------------------------
+async function checkServer() {
+    let inputLink = document.getElementById("linkInput").value;
+
+    if (!inputLink.trim()) return alert("Bitte einen Link eingeben!");
+
+    // Share-Link zuerst auflösen
+    let link = await resolveShareLink(inputLink);
+
+    let url;
+    try {
+        url = new URL(link);
     } catch {
         alert("Ungültiger Link!");
         return;
     }
 
+    // Unterstützte Roblox-Parameter
+    let code =
+        url.searchParams.get("privateServerLinkCode") ||
+        url.searchParams.get("privateServerInviteId") ||
+        url.searchParams.get("psCode");
+
     if (!code) {
         alert("Kein Private Server Code gefunden.");
         return;
+    }
+
+    let endpoint = "";
+
+    if (url.searchParams.get("privateServerLinkCode")) {
+        endpoint = `https://games.roblox.com/v1/games/servers/private?privateServerLinkCode=${code}`;
+    } else if (url.searchParams.get("privateServerInviteId")) {
+        endpoint = `https://games.roblox.com/v1/games/servers/private?privateServerInviteId=${code}`;
+    } else {
+        endpoint = `https://games.roblox.com/v1/games/servers/private?privateServerLinkCode=${code}`;
     }
 
     let serverList = document.getElementById("serverList");
@@ -132,18 +185,19 @@ async function checkServer() {
     serverList.prepend(box);
 
     try {
-        let res = await fetch(`https://games.roblox.com/v1/games/servers/private?code=${code}`);
+        let res = await fetch(endpoint);
         let data = await res.json();
 
-        if (data.error || !data.data) {
+        if (!data.data || data.data.length === 0) {
             box.innerHTML = `
-                <span>❌ Server ungültig / nicht gefunden</span>
-                <span class="statusBadge fail">ERROR</span>
+                <span>❌ Server ungültig / nicht vorhanden</span>
+                <span class="statusBadge fail">INVALID</span>
             `;
             return;
         }
 
-        let players = data.data.playing || 0;
+        let server = data.data[0];
+        let players = server.playerCount ?? 0;
 
         if (players > 0) {
             box.innerHTML = `
@@ -162,8 +216,10 @@ async function checkServer() {
             <span>❌ API Fehler / Roblox offline</span>
             <span class="statusBadge fail">ERROR</span>
         `;
+        console.error(err);
     }
 }
+
 </script>
 
 </body>
