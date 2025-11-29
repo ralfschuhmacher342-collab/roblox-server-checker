@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Roblox Private Server Checker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        background: #0d0d0d;
+        color: white;
+        font-family: "Segoe UI", Arial, sans-serif;
+    }
+
+    h1 {
+        text-align: center;
+        margin-top: 40px;
+        font-size: 38px;
+        color: #ffffff;
+        letter-spacing: 1px;
+    }
+
+    .container {
+        max-width: 800px;
+        margin: auto;
+        padding: 20px;
+    }
+
+    .inputBox {
+        display: flex;
+        gap: 10px;
+        margin-top: 30px;
+    }
+
+    input {
+        flex: 1;
+        padding: 14px;
+        border-radius: 8px;
+        border: 2px solid #333;
+        background: #1a1a1a;
+        color: white;
+        font-size: 16px;
+    }
+
+    button {
+        padding: 14px 25px;
+        border-radius: 8px;
+        border: none;
+        background: #007bff;
+        color: white;
+        font-size: 16px;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+
+    button:hover {
+        background: #0064d6;
+    }
+
+    .serverList {
+        margin-top: 35px;
+    }
+
+    .serverBox {
+        background: #111111;
+        border-radius: 10px;
+        padding: 20px;
+        margin-top: 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border: 1px solid #222;
+        animation: fadeIn 0.4s ease;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0px); }
+    }
+
+    .statusBadge {
+        padding: 7px 15px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 14px;
+    }
+
+    .ok { background: #2ecc71; color: black; }
+    .fail { background: #e74c3c; color: white; }
+
+</style>
+</head>
+
+<body>
+
+<h1>Roblox Private Server Checker</h1>
+
+<div class="container">
+
+    <div class="inputBox">
+        <input id="linkInput" type="text" placeholder="Roblox Private Server Link eingeben">
+        <button onclick="checkServer()">Check</button>
+    </div>
+
+    <div class="serverList" id="serverList"></div>
+
+</div>
+
+<script>
+async function checkServer() {
+    let link = document.getElementById("linkInput").value;
+
+    let code;
+    try {
+        code = new URL(link).searchParams.get("privateServerLinkCode");
+    } catch {
+        alert("Ungültiger Link!");
+        return;
+    }
+
+    if (!code) {
+        alert("Kein Private Server Code gefunden.");
+        return;
+    }
+
+    let serverList = document.getElementById("serverList");
+    let box = document.createElement("div");
+    box.className = "serverBox";
+    box.innerHTML = `<span>🔍 Wird überprüft...</span>`;
+    serverList.prepend(box);
+
+    try {
+        let res = await fetch(`https://games.roblox.com/v1/games/servers/private?code=${code}`);
+        let data = await res.json();
+
+        if (data.error || !data.data) {
+            box.innerHTML = `
+                <span>❌ Server ungültig / nicht gefunden</span>
+                <span class="statusBadge fail">ERROR</span>
+            `;
+            return;
+        }
+
+        let players = data.data.playing || 0;
+
+        if (players > 0) {
+            box.innerHTML = `
+                <span>🟢 Aktiver Server — Spieler: ${players}</span>
+                <span class="statusBadge ok">OK</span>
+            `;
+        } else {
+            box.innerHTML = `
+                <span>🔴 Server leer / offline</span>
+                <span class="statusBadge fail">OFFLINE</span>
+            `;
+        }
+
+    } catch (err) {
+        box.innerHTML = `
+            <span>❌ API Fehler / Roblox offline</span>
+            <span class="statusBadge fail">ERROR</span>
+        `;
+    }
+}
+</script>
+
+</body>
+</html>
